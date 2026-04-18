@@ -47,71 +47,38 @@ def extract_attendance(text):
 
 
 # -----------------------------
-# WEBHOOK ENDPOINT
+# WRITE TO EXCEL TEMPLATE
 # -----------------------------
-@app.post("/webhook")
-async def receive_whatsapp(request: Request):
-    data = await request.json()
-
-    # Extract message text safely
-    text = get_message_text(data)
-
-    print("RAW MESSAGE RECEIVED:")
-    print(text)
-
-    extracted = extract_attendance(text)
-
-    print("EXTRACTED DATA:")
-    print(extracted)
-
-    # Always return 200 OK so WhatsApp does not retry
-    return {"status": "received", "extracted": extracted}
-
-
-# -----------------------------
-# WEBHOOK VERIFICATION (GET)
-# -----------------------------
-@app.get("/webhook")
-async def verify(request: Request):
-    params = request.query_params
-    mode = params.get("hub.mode")
-    challenge = params.get("hub.challenge")
-    token = params.get("hub.verify_token")
-
-    VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
-
-    if mode == "subscribe" and token == VERIFY_TOKEN:
-        return int(challenge)
-
-    return {"error": "Invalid verification token"}
-import openpyxl
-
 def write_to_excel(extracted):
-    wb = openpyxl.load_workbook("template.xlsx")
+    print("Starting Excel write...")
+
+    try:
+        wb = openpyxl.load_workbook("template.xlsx")
+    except:
+        print("ERROR: template.xlsx not found in Railway container")
+        return
+
     ws = wb["Attendance"]
 
-    # 1. Extract date number (e.g., 18 from 18/04/2026)
+    # Extract date number (e.g., 18 from 18/04/2026)
     date_line = extracted["date"]
     date_num = int(date_line.split(":")[1].strip().split("/")[0])
 
-    # 2. Find the correct date column in row 4
+    # Find the correct date column in row 4
     date_col = None
     for col in range(1, ws.max_column + 1):
-        cell_value = ws.cell(row=4, column=col).value
-        if cell_value == date_num:
+        if ws.cell(row=4, column=col).value == date_num:
             date_col = col
             break
 
     if not date_col:
-        print("DATE COLUMN NOT FOUND IN TEMPLATE")
+        print("ERROR: Date column not found in template")
         return
 
-    # P/A column = date_col
-    # OT column = date_col + 1
     pa_col = date_col
     ot_col = date_col + 1
 
-    # 3. Write attendance for each employee
+    # Write attendance for each employee
     for emp in extracted["employees"]:
         # Example: "NR025 ARUN = P+2"
         code = emp.split()[0]  # NR025
@@ -145,4 +112,46 @@ def write_to_excel(extracted):
 
     # Save output file
     wb.save("attendance_output.xlsx")
-    print("Excel updated successfully!")
+    print("Excel updated successfully! File saved as attendance_output.xlsx")
+
+
+# -----------------------------
+# WEBHOOK ENDPOINT
+# -----------------------------
+@app.post("/webhook")
+async def receive_whatsapp(request: Request):
+    data = await request.json()
+
+    # Extract message text safely
+    text = get_message_text(data)
+
+    print("RAW MESSAGE RECEIVED:")
+    print(text)
+
+    extracted = extract_attendance(text)
+
+    print("EXTRACTED DATA:")
+    print(extracted)
+
+    # WRITE TO EXCEL
+    write_to_excel(extracted)
+
+    return {"status": "received", "extracted": extracted}
+
+
+# -----------------------------
+# WEBHOOK VERIFICATION (GET)
+# -----------------------------
+@app.get("/webhook")
+async def verify(request: Request):
+    params = request.query_params
+    mode = params.get("hub.mode")
+    challenge = params.get("hub.challenge")
+    token = params.get("hub.verify_token")
+
+    VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
+
+    if mode == "subscribe" and token == VERIFY_TOKEN:
+        return int(challenge)
+
+    return {"error": "Invalid verification token"}
