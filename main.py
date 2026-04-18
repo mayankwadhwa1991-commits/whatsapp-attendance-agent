@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 import openpyxl
 import os
+import re
 
 app = FastAPI()
 
@@ -12,6 +13,59 @@ def get_message_text(data):
         return data["entry"][0]["changes"][0]["value"]["messages"][0]["text"]["body"]
     except:
         return ""
+
+
+# -----------------------------
+# UNIVERSAL ATTENDANCE PARSER
+# -----------------------------
+def parse_employee_line(line):
+    """
+    Accepts ANY of these formats:
+    NR009 GURMEET = P+3
+    NR009 GURMEET P+3
+    NR009 GURMEET - P+3
+    NR009 GURMEET: P+3
+    NR009 GURMEET P 3
+    NR009 GURMEET A
+    NR009 GURMEET P--
+    """
+
+    # Extract employee code (NRxxx)
+    match = re.match(r"(NR\d+)", line)
+    if not match:
+        return None
+
+    code = match.group(1)
+
+    # Extract attendance part (P+3, A, P--, etc.)
+    # Look for patterns like P+3, P--, A, P, etc.
+    att_match = re.search(r"(P\+\d+|P-\-+|P-|P|A-\-+|A)", line.replace(" ", ""))
+    if not att_match:
+        return None
+
+    value = att_match.group(1)
+
+    # Normalize value
+    v = value.strip()
+
+    # Case 1: P+3
+    if "+" in v:
+        parts = v.split("+")
+        att = parts[0] or "P"
+        ot = parts[1] if len(parts) > 1 else "0"
+
+    # Case 2: P-- or P- or A--
+    elif "-" in v:
+        parts = v.split("-")
+        att = parts[0] or "A"
+        ot = "0"
+
+    # Case 3: Only P or A
+    else:
+        att = v
+        ot = "0"
+
+    return code, att, ot
 
 
 # -----------------------------
@@ -33,11 +87,12 @@ def extract_attendance(text):
     except:
         company_line = "UNKNOWN COMPANY"
 
-    # Extract employee rows (must contain "=")
+    # Extract employees using universal parser
     employees = []
     for l in lines:
-        if "=" in l:
-            employees.append(l)
+        parsed = parse_employee_line(l)
+        if parsed:
+            employees.append(parsed)
 
     return {
         "date": date_line,
@@ -65,13 +120,11 @@ def write_to_excel(extracted):
     date_num = int(date_line.split(":")[1].strip().split("/")[0])
     print(f"Looking for date column: {date_num}")
 
-    # -----------------------------------------
-    # AUTO-DETECT DATE ROW AND COLUMN (STRONG VERSION)
-    # -----------------------------------------
+    # AUTO-DETECT DATE COLUMN
     date_col = None
     date_row = None
 
-    for row in range(1, 50):  # scan first 50 rows
+    for row in range(1, 50):
         for col in range(1, ws.max_column + 1):
             cell_value = ws.cell(row=row, column=col).value
             if cell_value is None:
@@ -93,45 +146,17 @@ def write_to_excel(extracted):
 
     print(f"Using row {date_row} and column {date_col} for date {date_num}")
 
-    # P/A and OT columns
     pa_col = date_col
     ot_col = date_col + 1
 
-    # -----------------------------
     # WRITE ATTENDANCE
-    # -----------------------------
-    for emp in extracted["employees"]:
-        # Example: "NR025 ARUN = P+2"
-        code = emp.split()[0]  # NR025
-        value = emp.split("=")[1].strip()  # P+2 or A or P--
-
-        # Normalize value
-        v = value.replace(" ", "").strip()
-
-        # Case 1: P+2 (present + overtime)
-        if "+" in v:
-            parts = v.split("+")
-            att = parts[0] or "P"
-            ot = parts[1] if len(parts) > 1 else "0"
-
-        # Case 2: P-- or P- or A-- (absent or present with no OT)
-        elif "-" in v:
-            parts = v.split("-")
-            att = parts[0] or "A"
-            ot = "0"
-
-        # Case 3: Only P or A
-        else:
-            att = v
-            ot = "0"
+    for code, att, ot in extracted["employees"]:
 
         # Find employee row
         emp_row = None
         for row in range(1, ws.max_row + 1):
             cell_val = ws.cell(row=row, column=1).value
-            if cell_val is None:
-                continue
-            if str(cell_val).strip() == code:
+            if cell_val and str(cell_val).strip() == code:
                 emp_row = row
                 break
 
@@ -141,11 +166,9 @@ def write_to_excel(extracted):
 
         print(f"Writing for {code}: ATT={att}, OT={ot}")
 
-        # Write values
         ws.cell(row=emp_row, column=pa_col).value = att
         ws.cell(row=emp_row, column=ot_col).value = ot
 
-    # Save output file
     wb.save("attendance_output.xlsx")
     print("Excel updated successfully! File saved as attendance_output.xlsx")
 
@@ -157,7 +180,6 @@ def write_to_excel(extracted):
 async def receive_whatsapp(request: Request):
     data = await request.json()
 
-    # Extract message text safely
     text = get_message_text(data)
 
     print("RAW MESSAGE RECEIVED:")
@@ -168,14 +190,13 @@ async def receive_whatsapp(request: Request):
     print("EXTRACTED DATA:")
     print(extracted)
 
-    # WRITE TO EXCEL
     write_to_excel(extracted)
 
     return {"status": "received", "extracted": extracted}
 
 
 # -----------------------------
-# WEBHOOK VERIFICATION (GET)
+# WEBHOOK VERIFICATION
 # -----------------------------
 @app.get("/webhook")
 async def verify(request: Request):
