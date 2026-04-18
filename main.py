@@ -43,7 +43,12 @@ async def receive_whatsapp(request: Request):
 def extract_attendance(message):
     lines = message.split("\n")
 
-    date_line = [l for l in lines if "DATE" in l.upper() or "/" in l][0]
+    date_candidates = [l for l in lines if "DATE" in l.upper() or "/" in l]
+
+if not date_candidates:
+    return {"error": "No date found", "raw_text": text}
+
+date_line = date_candidates[0]
     date = extract_date(date_line)
 
     location = lines[1].strip()
@@ -90,8 +95,8 @@ def extract_attendance(message):
     }
 
 
-def extract_date(text):
-    t = text.upper().replace("DATE", "").replace(":", "").replace("-", "/")
+def extract_date():
+    t = .upper().replace("DATE", "").replace(":", "").replace("-", "/")
     t = "".join(ch for ch in t if ch.isdigit() or ch == "/")
     if len(t.split("/")[-1]) == 2:
         return datetime.strptime(t.strip(), "%d/%m/%y")
@@ -129,7 +134,7 @@ def send_whatsapp(number, message):
     data = {
         "messaging_product": "whatsapp",
         "to": number,
-        "text": {"body": message}
+        "": {"body": message}
     }
     requests.post(url, headers=headers, json=data)
 
