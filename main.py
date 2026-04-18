@@ -84,3 +84,65 @@ async def verify(request: Request):
         return int(challenge)
 
     return {"error": "Invalid verification token"}
+import openpyxl
+
+def write_to_excel(extracted):
+    wb = openpyxl.load_workbook("template.xlsx")
+    ws = wb["Attendance"]
+
+    # 1. Extract date number (e.g., 18 from 18/04/2026)
+    date_line = extracted["date"]
+    date_num = int(date_line.split(":")[1].strip().split("/")[0])
+
+    # 2. Find the correct date column in row 4
+    date_col = None
+    for col in range(1, ws.max_column + 1):
+        cell_value = ws.cell(row=4, column=col).value
+        if cell_value == date_num:
+            date_col = col
+            break
+
+    if not date_col:
+        print("DATE COLUMN NOT FOUND IN TEMPLATE")
+        return
+
+    # P/A column = date_col
+    # OT column = date_col + 1
+    pa_col = date_col
+    ot_col = date_col + 1
+
+    # 3. Write attendance for each employee
+    for emp in extracted["employees"]:
+        # Example: "NR025 ARUN = P+2"
+        code = emp.split()[0]  # NR025
+        value = emp.split("=")[1].strip()  # P+2 or A or P--
+
+        # Split attendance and OT
+        if "+" in value:
+            att, ot = value.split("+")
+        elif "-" in value:
+            att, ot = value.split("-")
+        else:
+            att, ot = value, "0"
+
+        att = att.strip()
+        ot = ot.strip()
+
+        # Find employee row
+        emp_row = None
+        for row in range(1, ws.max_row + 1):
+            if ws.cell(row=row, column=1).value == code:
+                emp_row = row
+                break
+
+        if not emp_row:
+            print(f"Employee {code} not found in template")
+            continue
+
+        # Write values
+        ws.cell(row=emp_row, column=pa_col).value = att
+        ws.cell(row=emp_row, column=ot_col).value = ot
+
+    # Save output file
+    wb.save("attendance_output.xlsx")
+    print("Excel updated successfully!")
