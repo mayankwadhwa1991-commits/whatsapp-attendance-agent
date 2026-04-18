@@ -27,7 +27,7 @@ def extract_attendance(text):
 
     date_line = date_candidates[0]
 
-    # Company name = line after date
+    # Company name = line after date (if exists)
     try:
         company_line = lines[lines.index(date_line) + 1]
     except:
@@ -60,20 +60,24 @@ def write_to_excel(extracted):
 
     ws = wb["Attendance"]
 
-    # Extract date number (e.g., 18 from 18/04/2026)
+    # Extract date number (e.g., 18 from DATE: 18/04/2026)
     date_line = extracted["date"]
     date_num = int(date_line.split(":")[1].strip().split("/")[0])
+    print(f"Looking for date column: {date_num}")
 
-    # Find the correct date column in row 4
+    # Find the correct date column in ROW 3 (your template)
     date_col = None
     for col in range(1, ws.max_column + 1):
-        if ws.cell(row=4, column=col).value == date_num:
+        cell_value = ws.cell(row=3, column=col).value
+        if str(cell_value).strip() == str(date_num):
             date_col = col
             break
 
     if not date_col:
         print("ERROR: Date column not found in template")
         return
+
+    print(f"Date column found at column {date_col}")
 
     pa_col = date_col
     ot_col = date_col + 1
@@ -98,13 +102,15 @@ def write_to_excel(extracted):
         # Find employee row
         emp_row = None
         for row in range(1, ws.max_row + 1):
-            if ws.cell(row=row, column=1).value == code:
+            if str(ws.cell(row=row, column=1).value).strip() == code:
                 emp_row = row
                 break
 
         if not emp_row:
             print(f"Employee {code} not found in template")
             continue
+
+        print(f"Writing for {code}: ATT={att}, OT={ot}")
 
         # Write values
         ws.cell(row=emp_row, column=pa_col).value = att
