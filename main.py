@@ -33,7 +33,7 @@ def extract_attendance(text):
     except:
         company_line = "UNKNOWN COMPANY"
 
-    # Extract employee rows
+    # Extract employee rows (must contain "=")
     employees = []
     for l in lines:
         if "=" in l:
@@ -105,16 +105,25 @@ def write_to_excel(extracted):
         code = emp.split()[0]  # NR025
         value = emp.split("=")[1].strip()  # P+2 or A or P--
 
-        # Split attendance and OT
-        if "+" in value:
-            att, ot = value.split("+")
-        elif "-" in value:
-            att, ot = value.split("-")
-        else:
-            att, ot = value, "0"
+        # Normalize value
+        v = value.replace(" ", "").strip()
 
-        att = att.strip()
-        ot = ot.strip()
+        # Case 1: P+2 (present + overtime)
+        if "+" in v:
+            parts = v.split("+")
+            att = parts[0] or "P"
+            ot = parts[1] if len(parts) > 1 else "0"
+
+        # Case 2: P-- or P- or A-- (absent or present with no OT)
+        elif "-" in v:
+            parts = v.split("-")
+            att = parts[0] or "A"
+            ot = "0"
+
+        # Case 3: Only P or A
+        else:
+            att = v
+            ot = "0"
 
         # Find employee row
         emp_row = None
