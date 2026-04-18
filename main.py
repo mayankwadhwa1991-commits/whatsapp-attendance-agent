@@ -65,24 +65,36 @@ def write_to_excel(extracted):
     date_num = int(date_line.split(":")[1].strip().split("/")[0])
     print(f"Looking for date column: {date_num}")
 
-    # Find the correct date column in ROW 3 (your template)
+    # -----------------------------------------
+    # AUTO-DETECT DATE ROW AND COLUMN (DEBUG)
+    # -----------------------------------------
     date_col = None
-    for col in range(1, ws.max_column + 1):
-        cell_value = ws.cell(row=3, column=col).value
-        if str(cell_value).strip() == str(date_num):
-            date_col = col
+    date_row = None
+
+    for row in range(1, 16):  # scan first 15 rows
+        for col in range(1, ws.max_column + 1):
+            cell_value = ws.cell(row=row, column=col).value
+            if str(cell_value).strip() == str(date_num):
+                date_row = row
+                date_col = col
+                print(f"FOUND DATE {date_num} at row {row}, col {col}")
+                break
+        if date_col:
             break
 
     if not date_col:
-        print("ERROR: Date column not found in template")
+        print("ERROR: Date column not found in template (scanned rows 1–15)")
         return
 
-    print(f"Date column found at column {date_col}")
+    print(f"Using row {date_row} and column {date_col} for date {date_num}")
 
+    # P/A and OT columns
     pa_col = date_col
     ot_col = date_col + 1
 
-    # Write attendance for each employee
+    # -----------------------------
+    # WRITE ATTENDANCE
+    # -----------------------------
     for emp in extracted["employees"]:
         # Example: "NR025 ARUN = P+2"
         code = emp.split()[0]  # NR025
