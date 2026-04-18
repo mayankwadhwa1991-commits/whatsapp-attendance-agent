@@ -66,15 +66,20 @@ def write_to_excel(extracted):
     print(f"Looking for date column: {date_num}")
 
     # -----------------------------------------
-    # AUTO-DETECT DATE ROW AND COLUMN (DEBUG)
+    # AUTO-DETECT DATE ROW AND COLUMN (STRONG VERSION)
     # -----------------------------------------
     date_col = None
     date_row = None
 
-    for row in range(1, 16):  # scan first 15 rows
+    for row in range(1, 50):  # scan first 50 rows
         for col in range(1, ws.max_column + 1):
             cell_value = ws.cell(row=row, column=col).value
-            if str(cell_value).strip() == str(date_num):
+            if cell_value is None:
+                continue
+
+            clean = str(cell_value).replace("\n", "").replace("\t", "").strip()
+
+            if clean == str(date_num):
                 date_row = row
                 date_col = col
                 print(f"FOUND DATE {date_num} at row {row}, col {col}")
@@ -83,7 +88,7 @@ def write_to_excel(extracted):
             break
 
     if not date_col:
-        print("ERROR: Date column not found in template (scanned rows 1–15)")
+        print("ERROR: Date column not found in template (scanned rows 1–50)")
         return
 
     print(f"Using row {date_row} and column {date_col} for date {date_num}")
@@ -114,7 +119,10 @@ def write_to_excel(extracted):
         # Find employee row
         emp_row = None
         for row in range(1, ws.max_row + 1):
-            if str(ws.cell(row=row, column=1).value).strip() == code:
+            cell_val = ws.cell(row=row, column=1).value
+            if cell_val is None:
+                continue
+            if str(cell_val).strip() == code:
                 emp_row = row
                 break
 
